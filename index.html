@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML Web OS</title>
+
+    <script src="tf.js"></script>
+    <script src="tf-backend-webgl.min.js"></script>
+    <script src="tf.node.js"></script>
+    
+    <script src="jszip.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #2b2b2b;
+            --taskbar: #1a1a1a;
+            --text: #ffffff;
+            --window-bg: #f4f4f4;
+            --window-text: #333;
+        }
+        
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: url('blues-dark.svg') center/cover no-repeat;
+            color: var(--text);
+            box-sizing: border-box;
+        }
+
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+
+        /* Desktop */
+        #desktop {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 50px);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            flex-wrap: wrap;
+            align-content: flex-start;
+            gap: 20px;
+            overflow: auto;
+        }
+
+        .desktop-icon {
+            width: 80px;
+            text-align: center;
+            cursor: pointer;
+            padding: 10px;
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+        .desktop-icon:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .desktop-icon img {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 5px;
+            pointer-events: none;
+        }
+        .desktop-icon span {
+            display: block;
+            font-size: 12px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            pointer-events: none;
+            word-wrap: break-word;
+        }
+
+        /* Screen Controls */
+        #screen-controls {
+            position: absolute;
+            bottom: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            align-items: center;
+            gap: 20px;
+            z-index: 90;
+            background: rgba(0,0,0,0.6);
+            padding: 8px 25px;
+            border-radius: 30px;
+            color: white;
+            user-select: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+        }
+        .screen-arrow {
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 18px;
+            transition: transform 0.1s;
+        }
+        .screen-arrow:hover {
+            transform: scale(1.3);
+            color: #4CAF50;
+        }
+        #screen-indicator-text {
+            font-size: 14px;
+            font-weight: bold;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        /* Taskbar */
+        #taskbar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 50px;
+            background-color: var(--taskbar);
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.5);
+            z-index: 10000;
+        }
+        #start-btn {
+            width: 36px;
+            height: 36px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        #start-btn:hover {
+            transform: scale(1.1);
+        }
+        
+        #taskbar-clock {
+            margin-left: auto;
+            text-align: right;
+            font-size: 12px;
+            padding-right: 10px;
+            user-select: none;
+        }
+
+        /* Windows - Always 100% Auto-Fit */
+        .window {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 50px);
+            background: var(--window-bg);
+            color: var(--window-text);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 100;
+        }
+
+        .window-header {
+            background: #e0e0e0;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            flex-shrink: 0; 
+        }
+        .window-header .title {
+            font-weight: bold;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .window-controls {
+            display: flex;
+            gap: 8px;
+        }
+        .control-btn {
+            border: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .close-btn { background: #ff5c5c; }
+
+        .window-content {
+            flex: 1;
+            padding: 15px;
+            overflow: auto;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+        }
+        
+        iframe.app-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            flex: 1;
+            display: block;
+        }
+
+        /* App Specific Styles */
+        .notes-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            gap: 15px;
+        }
+        .notes-sidebar {
+            width: 200px;
+            border-right: 1px solid #ccc;
+            padding-right: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            height: 100%;
+        }
+        .notes-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .note-item {
+            padding: 8px 10px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .note-item.active {
+            background: #e3f2fd;
+            border-color: #2196f3;
+            font-weight: bold;
+        }
+        .notes-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            height: 100%;
+        }
+        .note-title-input {
+            width: 100%;
+            padding: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+        .notes-area {
+            width: 100%;
+            flex: 1;
+            resize: none;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: inherit;
+        }
+        .action-btn {
+            background: #2196f3;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .action-btn:hover {
+            background: #1976d2;
+        }
+        
+        .media-preview-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+            width: 100%;
+        }
+        .media-item {
+            border: 1px solid #ccc;
+            padding: 5px;
+            border-radius: 6px;
+            text-align: center;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            width: 100%;
+            transition: box-shadow 0.2s;
+        }
+        .media-item:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .media-item img, .media-item video {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+        }
+        
+        /* Settings Grid Layout */
+        .apps-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            width: 100%;
+            align-content: start;
+            align-items: start;
+        }
+        .app-list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .delete-btn {
+            background: #ff4d4d;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .app-section {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ccc;
+            width: 100%;
+            flex-shrink: 0;
+        }
+        input[type="file"] {
+            max-width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="desktop"></div>
+
+    <div id="screen-controls">
+        <div class="screen-arrow" onclick="changeScreen(-1)">&#9664;</div>
+        <div id="screen-indicator-text">Screen 1 / 1</div>
+        <div class="screen-arrow" onclick="changeScreen(1)">&#9654;</div>
+    </div>
+
+    <div id="taskbar">
+        <img src="os-html-web-os-icon.svg" id="start-btn" alt="Start" title="Start">
+        <div id="taskbar-clock">
+            <div id="clock-time"></div>
+            <div id="clock-date"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- Core OS State & Data ---
+        const builtInApps = [
+            { id: 'settings', title: 'Settings', icon: 'os-settings-app-icon.svg' },
+            { id: 'files', title: 'Files', icon: 'os-files-app-icon.svg' },
+            { id: 'notes', title: 'Notes', icon: 'os-notes-app-icon.svg' },
+            { id: 'time', title: 'Time', icon: 'os-time-icon.svg' },
+            { id: 'videos', title: 'Videos', icon: 'os-videos-app-icon.svg' }
+        ];
+
+        let installedApps = []; 
+        let highestZIndex = 100;
+        let db; 
+
+        // Screen Management
+        let screenCount = parseInt(localStorage.getItem('webOsScreenCount') || '1');
+        let currentScreen = 0;
+        let appScreens = JSON.parse(localStorage.getItem('webOsAppScreens') || '{}');
+
+        // Notes State
+        let notesData = [];
+        let activeNoteId = null;
+
+        // --- Core OS Initialization ---
+        async function initOS() {
+            await initDB();
+            await loadApps();
+            loadWallpaper();
+            loadNotes();
+            updateTaskbarClock();
+            updateScreenControls();
+            setInterval(updateTaskbarClock, 1000);
+        }
+
+        // --- Screen Navigation Logic ---
+        window.changeScreen = function(dir) {
+            currentScreen += dir;
+            if (currentScreen < 0) currentScreen = screenCount - 1; 
+            if (currentScreen >= screenCount) currentScreen = 0;
+            renderDesktop();
+            updateScreenControls();
+        };
+
+        function updateScreenControls() {
+            const el = document.getElementById('screen-indicator-text');
+            if (el) el.innerText = `Screen ${currentScreen + 1} / ${screenCount}`;
+            const container = document.getElementById('screen-controls');
+            if (container) {
+                container.style.display = screenCount > 1 ? 'flex' : 'none';
+            }
+        }
+
+        // --- IndexedDB Logic for Apps & Files ---
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('WebOS_DB', 2);
+                request.onupgradeneeded = (e) => {
+                    const database = e.target.result;
+                    if (!database.objectStoreNames.contains('apps')) {
+                        database.createObjectStore('apps', { keyPath: 'id' });
+                    }
+                    if (!database.objectStoreNames.contains('files')) {
+                        database.createObjectStore('files', { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = (e) => {
+                    db = e.target.result;
+                    resolve();
+                };
+                request.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        // DB Apps functions
+        function saveAppToDB(appData) {
+            return new Promise((resolve) => {
+                const tx = db.transaction('apps', 'readwrite');
+                tx.objectStore('apps').put(appData);
+                tx.oncomplete = resolve;
+            });
+        }
+        function getAppListFromDB() {
+            return new Promise((resolve) => {
+                const tx = db.transaction('apps', 'readonly');
+                const req = tx.objectStore('apps').getAll();
+                req.onsuccess = () => {
+                    const list = req.result.map(a => ({
+                        id: a.id, title: a.title, icon: a.icon, isCustom: true 
+                    }));
+                    resolve(list);
+                };
+            });
+        }
+        function getFullAppFromDB(id) {
+            return new Promise((resolve) => {
+                const tx = db.transaction('apps', 'readonly');
+                const req = tx.objectStore('apps').get(id);
+                req.onsuccess = () => resolve(req.result);
+            });
+        }
+        function deleteAppFromDB(id) {
+            return new Promise((resolve) => {
+                const tx = db.transaction('apps', 'readwrite');
+                tx.objectStore('apps').delete(id);
+                tx.oncomplete = resolve;
+            });
+        }
+
+        // DB Files functions
+        function saveFileToDB(fileData) {
+            return new Promise((resolve) => {
+                const tx = db.transaction('files', 'readwrite');
+                tx.objectStore('files').put(fileData);
+                tx.oncomplete = resolve;
+            });
+        }
+        function getFilesFromDB() {
+            return new Promise((resolve) => {
+                const tx = db.transaction('files', 'readonly');
+                const req = tx.objectStore('files').getAll();
+                req.onsuccess = () => resolve(req.result);
+            });
+        }
+        function deleteFileFromDB(id) {
+            return new Promise((resolve) => {
+                const tx = db.transaction('files', 'readwrite');
+                tx.objectStore('files').delete(id);
+                tx.oncomplete = resolve;
+            });
+        }
+
+        async function loadApps() {
+            installedApps = await getAppListFromDB();
+            renderDesktop();
+        }
+
+        // --- System Settings & Utilities ---
+        function loadWallpaper() {
+            const savedWallpaper = localStorage.getItem('webOsWallpaper');
+            if (savedWallpaper) {
+                document.body.style.background = `url('${savedWallpaper}') center/cover no-repeat`;
+            } else {
+                document.body.style.background = "url('blues-dark.svg') center/cover no-repeat";
+            }
+        }
+
+        function loadNotes() {
+            const savedNotes = localStorage.getItem('webOsNotes');
+            if (savedNotes) {
+                notesData = JSON.parse(savedNotes);
+            } else {
+                notesData = [{ id: 'note-1', title: 'Welcome Note', content: 'Welcome to your HTML Web OS Notes app!' }];
+                saveNotes();
+            }
+            if (notesData.length > 0) activeNoteId = notesData[0].id;
+        }
+
+        function saveNotes() {
+            localStorage.setItem('webOsNotes', JSON.stringify(notesData));
+        }
+
+        function updateTaskbarClock() {
+            const now = new Date();
+            const timeOptions = { hour: 'numeric', minute: '2-digit', second: '2-digit' };
+            const dateOptions = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
+            document.getElementById('clock-time').innerText = now.toLocaleTimeString(undefined, timeOptions);
+            document.getElementById('clock-date').innerText = now.toLocaleDateString(undefined, dateOptions);
+        }
+
+        // --- Desktop UI ---
+        function renderDesktop() {
+            const desktop = document.getElementById('desktop');
+            desktop.innerHTML = '';
+            
+            const allApps = [...builtInApps, ...installedApps];
+
+            allApps.forEach(app => {
+                let s = appScreens[app.id];
+                if (s === undefined) s = 0; 
+                if (s !== currentScreen) return; 
+
+                const iconDiv = document.createElement('div');
+                iconDiv.className = 'desktop-icon';
+                iconDiv.onclick = () => openApp(app);
+
+                const img = document.createElement('img');
+                img.src = app.icon;
+
+                const span = document.createElement('span');
+                span.innerText = app.title;
+
+                iconDiv.appendChild(img);
+                iconDiv.appendChild(span);
+                desktop.appendChild(iconDiv);
+            });
+        }
+
+        // --- Window & App Launching Management ---
+        async function openApp(app, passedFile = null) {
+            const win = document.createElement('div');
+            win.className = 'window'; 
+            win.style.zIndex = ++highestZIndex;
+
+            const header = document.createElement('div');
+            header.className = 'window-header';
+            header.innerHTML = `
+                <span class="title">${app.title} ${passedFile ? '- ' + passedFile.name : ''}</span>
+                <div class="window-controls">
+                    <button class="control-btn close-btn" title="Close"></button>
+                </div>
+            `;
+            
+            const content = document.createElement('div');
+            content.className = 'window-content';
+
+            if (app.id === 'settings') {
+                renderSettings(content);
+            } else if (app.id === 'files') {
+                renderFiles(content);
+            } else if (app.id === 'notes') {
+                renderNotesApp(content);
+            } else if (app.id === 'time') {
+                content.innerHTML = `<div style="display:flex; flex-direction:column; justify-content:center; align-items:center; width:100%; height:100%;">
+                    <h1 id="clock-display-app" style="text-align:center; font-size:clamp(40px, 10vw, 100px); margin:0; width:100%;"></h1>
+                </div>`;
+                const clockApp = content.querySelector('#clock-display-app');
+                clockApp.innerText = new Date().toLocaleTimeString();
+                setInterval(() => {
+                    if(document.body.contains(clockApp)) clockApp.innerText = new Date().toLocaleTimeString();
+                }, 1000);
+            } else if (app.id === 'videos') {
+                if (passedFile && passedFile.blob) {
+                    const url = URL.createObjectURL(passedFile.blob);
+                    if (passedFile.type.startsWith('audio/')) {
+                        content.innerHTML = `
+                            <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; width:100%; height:100%; background:#111; color:white;">
+                                <h3>Playing Audio</h3>
+                                <p>${passedFile.name}</p>
+                                <audio src="${url}" controls autoplay style="width:80%; margin-top:20px;"></audio>
+                            </div>
+                        `;
+                    } else {
+                        content.innerHTML = `
+                            <div style="display:flex; flex-direction:column; width:100%; height:100%; background:#000;">
+                                <video src="${url}" controls autoplay style="width:100%; height:100%; object-fit:contain;"></video>
+                            </div>
+                        `;
+                    }
+                } else {
+                    content.innerHTML = `<div style="display:flex; flex-direction:column; justify-content:center; align-items:center; width:100%; height:100%;">
+                        <h3>Media Player</h3>
+                        <p>Open the Files app and click a video or audio file to play it here.</p>
+                    </div>`;
+                }
+            } else if (app.isCustom) {
+                content.innerHTML = `<h3 style="text-align:center; margin-top:20px;">Loading App from Database...</h3>`;
+                
+                const fullApp = await getFullAppFromDB(app.id);
+                if(!fullApp) {
+                    content.innerHTML = `<h3 style="color:red; text-align:center;">App Data Corrupted</h3>`;
+                    return;
+                }
+
+                const urlMap = {};
+                const objectUrls = []; 
+                for (const [path, blob] of Object.entries(fullApp.files)) {
+                    const url = URL.createObjectURL(blob);
+                    urlMap[path] = url;
+                    urlMap['/' + path] = url;
+                    urlMap['./' + path] = url;
+                    objectUrls.push(url);
+                }
+
+                let htmlText = await fullApp.files['index.html'].text();
+
+                for (const [path, blob] of Object.entries(fullApp.files)) {
+                    if (path !== 'index.html') {
+                        const url = urlMap[path];
+                        htmlText = htmlText.split(`"${path}"`).join(`"${url}"`);
+                        htmlText = htmlText.split(`'${path}'`).join(`'${url}'`);
+                        htmlText = htmlText.split(`"./${path}"`).join(`"${url}"`);
+                        htmlText = htmlText.split(`'./${path}'`).join(`'${url}'`);
+                    }
+                }
+
+                const fetchInterceptor = `
+                <script>
+                (function() {
+                    const map = ${JSON.stringify(urlMap)};
+                    const originalFetch = window.fetch;
+                    window.fetch = async function(resource, init) {
+                        let url = typeof resource === 'string' ? resource : (resource ? resource.url : '');
+                        if (map[url]) return originalFetch(map[url], init);
+                        let cleanUrl = url.replace(/^\\.\\//, '').replace(/^\\//, '');
+                        if (map[cleanUrl]) return originalFetch(map[cleanUrl], init);
+                        return originalFetch(resource, init);
+                    };
+                })();
+                <\/script>
+                `;
+                
+                const autoFitStyle = `<style>body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: auto; box-sizing: border-box; }</style>`;
+                
+                if (htmlText.includes('<head>')) {
+                    htmlText = htmlText.replace('<head>', '<head>' + autoFitStyle + fetchInterceptor);
+                } else {
+                    htmlText = autoFitStyle + fetchInterceptor + htmlText;
+                }
+
+                const finalBlob = new Blob([htmlText], { type: 'text/html' });
+                const finalUrl = URL.createObjectURL(finalBlob);
+                objectUrls.push(finalUrl);
+
+                content.innerHTML = `<iframe class="app-frame" src="${finalUrl}"></iframe>`;
+                content.style.padding = "0"; 
+
+                header.querySelector('.close-btn').addEventListener('click', () => {
+                    objectUrls.forEach(url => URL.revokeObjectURL(url));
+                });
+            }
+
+            header.querySelector('.close-btn').addEventListener('click', () => {
+                win.remove();
+            });
+
+            win.appendChild(header);
+            win.appendChild(content);
+            win.addEventListener('mousedown', () => win.style.zIndex = ++highestZIndex);
+            document.body.appendChild(win);
+        }
+
+        // --- Notes App Logic ---
+        function renderNotesApp(container) {
+            container.innerHTML = `
+                <div class="notes-container">
+                    <div class="notes-sidebar">
+                        <button class="action-btn" id="new-note-btn">+ New Note</button>
+                        <div class="notes-list" id="notes-list"></div>
+                    </div>
+                    <div class="notes-main">
+                        <input type="text" class="note-title-input" id="note-title" placeholder="Note Title...">
+                        <textarea class="notes-area" id="note-content" placeholder="Type your notes here..."></textarea>
+                    </div>
+                </div>
+            `;
+
+            const listEl = container.querySelector('#notes-list');
+            const titleInput = container.querySelector('#note-title');
+            const contentInput = container.querySelector('#note-content');
+            const newBtn = container.querySelector('#new-note-btn');
+
+            function refreshNotesView() {
+                listEl.innerHTML = '';
+                notesData.forEach(note => {
+                    const item = document.createElement('div');
+                    item.className = 'note-item' + (note.id === activeNoteId ? ' active' : '');
+                    
+                    const span = document.createElement('span');
+                    span.innerText = note.title || 'Untitled Note';
+                    span.style.overflow = 'hidden';
+                    span.style.textOverflow = 'ellipsis';
+
+                    const delBtn = document.createElement('button');
+                    delBtn.className = 'delete-btn';
+                    delBtn.style.padding = '2px 6px';
+                    delBtn.style.fontSize = '10px';
+                    delBtn.innerText = 'X';
+                    delBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        notesData = notesData.filter(n => n.id !== note.id);
+                        if (activeNoteId === note.id) {
+                            activeNoteId = notesData.length > 0 ? notesData[0].id : null;
+                        }
+                        saveNotes();
+                        refreshNotesView();
+                    };
+
+                    item.appendChild(span);
+                    item.appendChild(delBtn);
+
+                    item.onclick = () => {
+                        activeNoteId = note.id;
+                        refreshNotesView();
+                    };
+
+                    listEl.appendChild(item);
+                });
+
+                const activeNote = notesData.find(n => n.id === activeNoteId);
+                if (activeNote) {
+                    titleInput.disabled = false;
+                    contentInput.disabled = false;
+                    titleInput.value = activeNote.title;
+                    contentInput.value = activeNote.content;
+                } else {
+                    titleInput.disabled = true;
+                    contentInput.disabled = true;
+                    titleInput.value = '';
+                    contentInput.value = '';
+                }
+            }
+
+            newBtn.onclick = () => {
+                const newNote = { id: 'note-' + Date.now(), title: 'New Note', content: '' };
+                notesData.unshift(newNote);
+                activeNoteId = newNote.id;
+                saveNotes();
+                refreshNotesView();
+            };
+
+            titleInput.oninput = () => {
+                const activeNote = notesData.find(n => n.id === activeNoteId);
+                if (activeNote) {
+                    activeNote.title = titleInput.value;
+                    saveNotes();
+                    refreshNotesView();
+                }
+            };
+
+            contentInput.oninput = () => {
+                const activeNote = notesData.find(n => n.id === activeNoteId);
+                if (activeNote) {
+                    activeNote.content = contentInput.value;
+                    saveNotes();
+                }
+            };
+
+            refreshNotesView();
+        }
+
+        // --- Settings Logic ---
+        function renderSettings(container) {
+            container.innerHTML = `
+                <div class="app-section">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h3>Desktop Screens</h3>
+                            <p style="font-size:12px; color:#666;">Current Screen: ${currentScreen + 1} of ${screenCount}</p>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <button class="action-btn" id="add-screen-btn">Add New Screen</button>
+                            <div style="display:flex; border: 1px solid #ccc; border-radius: 4px; overflow:hidden;">
+                                <select id="delete-screen-select" style="border:none; padding: 5px; outline:none; background:#eee; cursor:pointer; font-size:12px;"></select>
+                                <button class="delete-btn" id="delete-screen-btn" style="border-radius:0; font-size:12px;">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="app-section">
+                    <h3>Desktop Wallpaper</h3>
+                    <p style="font-size:12px; color:#666;">Select an SVG or Image file to set as background.</p>
+                    <input type="file" id="wallpaper-installer" accept="image/svg+xml, image/*">
+                </div>
+                <div class="app-section">
+                    <h3>Install New App (ZIP)</h3>
+                    <p style="font-size:12px; color:#666;">ZIP must contain: index.html, title.txt, icon.svg.</p>
+                    <input type="file" id="app-installer" accept=".zip">
+                </div>
+                <div class="app-section" style="flex:1; display:flex; flex-direction:column; overflow:hidden; min-height: 200px;">
+                    <h3>Built-in Apps</h3>
+                    <div id="builtin-apps-list" class="apps-grid" style="overflow-y:auto; padding-right:5px; padding-bottom:15px; border-bottom:1px solid #ccc; margin-bottom:10px;"></div>
+                    
+                    <h3>Installed Custom Apps</h3>
+                    <div id="installed-apps-list" class="apps-grid" style="overflow-y:auto; flex:1; padding-right:5px;"></div>
+                </div>
+            `;
+
+            // Setup Screen Select Dropdown
+            const screenSelect = container.querySelector('#delete-screen-select');
+            for(let i = 0; i < screenCount; i++) {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.innerText = `Screen ${i + 1}`;
+                screenSelect.appendChild(opt);
+            }
+            screenSelect.value = currentScreen; // Select current screen by default
+
+            // Screen Add Logic
+            container.querySelector('#add-screen-btn').addEventListener('click', () => {
+                screenCount++;
+                localStorage.setItem('webOsScreenCount', screenCount);
+                updateScreenControls();
+                alert(`Added Screen ${screenCount}! Use the arrows above the taskbar to switch screens.`);
+                renderSettings(container); 
+            });
+
+            // Specific Screen Delete Logic
+            container.querySelector('#delete-screen-btn').addEventListener('click', () => {
+                const targetScreen = parseInt(screenSelect.value);
+
+                if (screenCount <= 1) {
+                    alert("You cannot delete the last remaining screen.");
+                    return;
+                }
+                
+                // Verify no apps are mapped to the chosen screen
+                const appsOnScreen = builtInApps.some(a => (appScreens[a.id] || 0) === targetScreen) ||
+                                     installedApps.some(a => (appScreens[a.id] || 0) === targetScreen);
+                                     
+                if (appsOnScreen) {
+                    alert(`Cannot delete Screen ${targetScreen + 1} because there are apps on it. Move or delete them first!`);
+                    return;
+                }
+                
+                // Shift down screen mappings for apps on higher pages to close the gap
+                for (let id in appScreens) {
+                    if (appScreens[id] > targetScreen) {
+                        appScreens[id]--;
+                    }
+                }
+                localStorage.setItem('webOsAppScreens', JSON.stringify(appScreens));
+                
+                screenCount--;
+                localStorage.setItem('webOsScreenCount', screenCount);
+                
+                // Adjust current view if we deleted the screen we are on, or a screen before us
+                if (currentScreen >= screenCount) currentScreen = screenCount - 1;
+                else if (currentScreen > targetScreen) currentScreen--;
+
+                updateScreenControls();
+                renderDesktop();
+                renderSettings(container);
+                alert(`Screen ${targetScreen + 1} deleted successfully!`);
+            });
+
+            // Wallpaper Upload Logic
+            container.querySelector('#wallpaper-installer').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const dataUrl = event.target.result;
+                    localStorage.setItem('webOsWallpaper', dataUrl);
+                    document.body.style.background = `url('${dataUrl}') center/cover no-repeat`;
+                };
+                reader.readAsDataURL(file);
+            });
+
+            // App Install Logic
+            container.querySelector('#app-installer').addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                e.target.disabled = true;
+                const list = container.querySelector('#installed-apps-list');
+                const origListHTML = list.innerHTML;
+                list.innerHTML = `<h4 style="text-align:center; grid-column: span 2;">Extracting & Installing...</h4>`;
+
+                try {
+                    const jszip = new JSZip();
+                    const zip = await jszip.loadAsync(file);
+                    
+                    if (!zip.file("index.html") || !zip.file("title.txt") || !zip.file("icon.svg")) {
+                        throw new Error("ZIP must contain index.html, title.txt, and icon.svg");
+                    }
+
+                    const title = await zip.file("title.txt").async("string");
+                    const iconSvg = await zip.file("icon.svg").async("string");
+                    const iconBase64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(iconSvg)));
+
+                    const filesData = {};
+                    for (const relativePath in zip.files) {
+                        if (!zip.files[relativePath].dir) {
+                            let mime = 'application/octet-stream';
+                            if (relativePath.endsWith('.html')) mime = 'text/html';
+                            else if (relativePath.endsWith('.js')) mime = 'application/javascript';
+                            else if (relativePath.endsWith('.css')) mime = 'text/css';
+                            else if (relativePath.endsWith('.wasm')) mime = 'application/wasm'; 
+                            else if (relativePath.endsWith('.svg')) mime = 'image/svg+xml';
+                            else if (relativePath.endsWith('.png')) mime = 'image/png';
+                            else if (relativePath.endsWith('.jpg') || relativePath.endsWith('.jpeg')) mime = 'image/jpeg';
+                            else if (relativePath.endsWith('.json')) mime = 'application/json';
+                            
+                            const blobData = await zip.file(relativePath).async("arraybuffer");
+                            filesData[relativePath] = new Blob([blobData], { type: mime });
+                        }
+                    }
+
+                    const newApp = {
+                        id: 'custom-' + Date.now(),
+                        title: title.trim(),
+                        icon: iconBase64,
+                        files: filesData
+                    };
+
+                    await saveAppToDB(newApp);
+                    appScreens[newApp.id] = currentScreen;
+                    localStorage.setItem('webOsAppScreens', JSON.stringify(appScreens));
+
+                    await loadApps();
+                    renderSettings(container); 
+                    alert(`${title.trim()} installed successfully on Screen ${currentScreen + 1}!`);
+                } catch (error) {
+                    console.error(error);
+                    list.innerHTML = origListHTML;
+                    alert("Failed to install app: " + error.message);
+                } finally {
+                    e.target.disabled = false;
+                    e.target.value = ''; 
+                }
+            });
+
+            updateSettingsAppList(container);
+        }
+
+        function updateSettingsAppList(container) {
+            // Render Built-in Apps (Grid format)
+            const builtinList = container.querySelector('#builtin-apps-list');
+            if (builtinList) {
+                builtinList.innerHTML = '';
+                builtInApps.forEach(app => {
+                    let s = appScreens[app.id] !== undefined ? appScreens[app.id] : 0;
+                    const div = document.createElement('div');
+                    div.className = 'app-list-item';
+                    div.innerHTML = `
+                        <span style="font-weight:bold; word-break: break-word; margin-right:5px; font-size:13px;">${app.title} (Page ${s + 1})</span>
+                        <button class="action-btn move-btn" data-id="${app.id}" style="padding:5px 10px; font-size:11px; white-space:nowrap;">Move ➜</button>
+                    `;
+                    builtinList.appendChild(div);
+                });
+            }
+
+            // Render Custom Apps (Grid format)
+            const customList = container.querySelector('#installed-apps-list');
+            if (customList) {
+                if (installedApps.length === 0) {
+                    customList.innerHTML = `<p style="color:#888; text-align:center; grid-column:span 2; margin-top:10px;">No custom apps installed.</p>`;
+                } else {
+                    customList.innerHTML = '';
+                    installedApps.forEach(app => {
+                        let s = appScreens[app.id] !== undefined ? appScreens[app.id] : 0;
+                        const div = document.createElement('div');
+                        div.className = 'app-list-item';
+                        div.innerHTML = `
+                            <span style="font-weight:bold; word-break: break-word; margin-right:5px; font-size:13px;">${app.title} (Page ${s + 1})</span>
+                            <div style="display:flex; gap:5px;">
+                                <button class="action-btn move-btn" data-id="${app.id}" style="padding:5px 10px; font-size:11px;">Move</button>
+                                <button class="delete-btn" data-id="${app.id}" style="padding:5px 10px; font-size:11px;">Delete</button>
+                            </div>
+                        `;
+                        customList.appendChild(div);
+                    });
+                }
+            }
+
+            // Attach Move Logic
+            container.querySelectorAll('.move-btn').forEach(btn => {
+                btn.onclick = () => {
+                    if (screenCount <= 1) {
+                        alert("You only have 1 screen! Add more screens first.");
+                        return;
+                    }
+                    const id = btn.getAttribute('data-id');
+                    let s = appScreens[id] !== undefined ? appScreens[id] : 0;
+                    s = (s + 1) % screenCount; // Wrap to next screen
+                    appScreens[id] = s;
+                    localStorage.setItem('webOsAppScreens', JSON.stringify(appScreens));
+                    renderDesktop();
+                    updateSettingsAppList(container); 
+                };
+            });
+
+            // Attach Delete Logic
+            container.querySelectorAll('.delete-btn').forEach(btn => {
+                if (btn.id === 'delete-screen-btn') return; // Skip screen delete btn
+                btn.onclick = async (e) => {
+                    const id = e.target.getAttribute('data-id');
+                    await deleteAppFromDB(id);
+                    delete appScreens[id];
+                    localStorage.setItem('webOsAppScreens', JSON.stringify(appScreens));
+                    
+                    await loadApps();
+                    updateSettingsAppList(container); 
+                };
+            });
+        }
+
+        // --- Files Explorer App ---
+        function renderFiles(container) {
+            container.innerHTML = `
+                <div style="width:100%; flex-shrink: 0; padding-bottom:10px; border-bottom:1px solid #ccc;">
+                    <h3>File Explorer</h3>
+                    <p>Upload files here to save them. Click a saved Video or Audio file to open it in the Media Player.</p>
+                    <input type="file" id="media-input" accept="video/*, image/*, audio/*" multiple style="width:100%;">
+                </div>
+                <div id="media-preview" class="media-preview-container" style="flex: 1; overflow-y: auto;"></div>
+            `;
+
+            const preview = container.querySelector('#media-preview');
+
+            async function loadSavedFiles() {
+                preview.innerHTML = '<p style="grid-column: span 2;">Loading files...</p>';
+                const files = await getFilesFromDB();
+                preview.innerHTML = '';
+                
+                if(files.length === 0) {
+                    preview.innerHTML = '<p style="color:#888; grid-column: span 2;">No files saved. Upload some above!</p>';
+                    return;
+                }
+
+                files.forEach(file => {
+                    const url = URL.createObjectURL(file.blob);
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'media-item';
+                    wrapper.style.cursor = 'pointer';
+
+                    let contentHtml = '';
+                    if (file.type.startsWith('image/')) {
+                        contentHtml = `<img src="${url}" style="pointer-events:none;"><div style="margin-top:5px; font-size:12px; word-break:break-all;">${file.name}</div>`;
+                        wrapper.onclick = () => window.open(url, '_blank');
+                    } else if (file.type.startsWith('video/')) {
+                        contentHtml = `<video src="${url}" style="width:100%; pointer-events:none;"></video><div style="margin-top:5px; font-size:12px; word-break:break-all;">🎞️ ${file.name}</div>`;
+                        wrapper.onclick = () => {
+                            const videoApp = builtInApps.find(a => a.id === 'videos');
+                            openApp(videoApp, file);
+                        };
+                    } else if (file.type.startsWith('audio/')) {
+                        contentHtml = `<div style="font-size:32px; padding:10px;">🎵</div><div style="margin-top:5px; font-size:12px; word-break:break-all;">${file.name}</div>`;
+                        wrapper.onclick = () => {
+                            const videoApp = builtInApps.find(a => a.id === 'videos');
+                            openApp(videoApp, file);
+                        };
+                    }
+
+                    wrapper.innerHTML = contentHtml;
+
+                    const delBtn = document.createElement('button');
+                    delBtn.innerText = 'Delete';
+                    delBtn.className = 'delete-btn';
+                    delBtn.style.marginTop = '10px';
+                    delBtn.style.width = '100%';
+                    delBtn.onclick = async (e) => {
+                        e.stopPropagation();
+                        await deleteFileFromDB(file.id);
+                        loadSavedFiles();
+                    };
+                    wrapper.appendChild(delBtn);
+                    preview.appendChild(wrapper);
+                });
+            }
+
+            loadSavedFiles();
+
+            container.querySelector('#media-input').addEventListener('change', async (e) => {
+                const files = e.target.files;
+                if(!files.length) return;
+                
+                preview.innerHTML = '<p style="grid-column: span 2;">Saving files to database...</p>';
+                for(let i=0; i<files.length; i++) {
+                    await saveFileToDB({
+                        id: 'file-' + Date.now() + '-' + i,
+                        name: files[i].name,
+                        type: files[i].type,
+                        blob: files[i]
+                    });
+                }
+                e.target.value = '';
+                loadSavedFiles();
+            });
+        }
+
+        // Run OS
+        window.onload = initOS;
+    </script>
+</body>
+</html>
